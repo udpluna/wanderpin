@@ -1,0 +1,27 @@
+WANDERPIN - TERMS OF USE
+
+WanderPin is free, open-source software released under the GNU General Public License v3
+(see LICENSE). By installing or using it you agree to the following:
+
+1. You must be at least 18 years old, or have permission from a parent or legal guardian.
+
+2. Only use WanderPin with devices you own or are allowed to manage.
+
+3. Don't use WanderPin to deceive other people in ways that could harm them, to stalk or
+   harass anyone, to evade lawful supervision, or to commit fraud or break the law.
+   You are responsible for how you use it.
+
+4. Many apps and location-based games forbid location changing in their own terms and may
+   suspend accounts. Use at your own risk.
+
+5. WanderPin uses Apple's built-in Developer Mode location simulation. It doesn't jailbreak
+   or permanently modify your device. Disconnecting, closing WanderPin, or pressing
+   "Real GPS" returns your device to its real location.
+
+6. NO WARRANTY. WanderPin is provided "as is", without warranty of any kind. The authors are
+   not liable for any damages, lost data or suspended accounts arising from its use.
+
+7. Maps, search and routing come from free third-party services (OpenFreeMap, OpenStreetMap,
+   Photon, FOSSGIS, Esri) under their own terms. Map data (c) OpenStreetMap contributors.
+
+Donations are voluntary and don't buy any extra rights or features.

@@ -1,0 +1,56 @@
+# Builds the Windows app + installer and attaches them to a GitHub Release.
+# To publish a new version: bump "version" in product.json and build/installer.iss,
+# then on GitHub go to Releases > "Draft a new release", create a tag like v1.0.1 and publish.
+name: Build Windows release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build app
+        run: python -m PyInstaller build/wanderpin.spec --noconfirm --distpath dist --workpath build/work
+
+      - name: Zip portable version
+        shell: pwsh
+        run: Compress-Archive -Path dist/WanderPin/* -DestinationPath dist/WanderPin-Portable-Windows.zip
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" build\installer.iss
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WanderPin-Windows
+          path: |
+            dist/WanderPin-Portable-Windows.zip
+            dist/installer/*.exe
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/WanderPin-Portable-Windows.zip
+            dist/installer/*.exe

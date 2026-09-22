@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>WanderPin</title>
+<link rel="icon" href="/static/img/icon.png">
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/static/vendor/maplibre/maplibre-gl.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="map"></div>
+
+<!-- ============ TOP BAR ============ -->
+<header class="topbar">
+  <div class="brand glass">
+    <img src="/static/img/icon.png" alt="">
+    <span class="brand-name" id="brandName">WanderPin</span>
+  </div>
+
+  <div class="search glass" id="searchBox">
+    <i data-i="search"></i>
+    <input id="q" placeholder="Search a place, address or paste coordinates…" autocomplete="off" spellcheck="false">
+    <kbd class="hide-sm">/</kbd>
+    <div class="results" id="results"></div>
+  </div>
+
+  <div class="top-right">
+    <button class="status glass" id="statusPill" title="iPhone connection">
+      <span class="sdot"></span><span class="stext">Not connected</span><i class="s-ico" data-i="usb"></i>
+    </button>
+    <div class="icon-group glass">
+      <button class="ibtn heart" id="bSupport" title="Support the project" hidden><i data-i="heart"></i></button>
+      <button class="ibtn" id="bLayers" title="Map style"><i data-i="layers"></i></button>
+      <button class="ibtn" id="bTheme" title="Light / dark"><i data-i="moon"></i></button>
+      <button class="ibtn" id="bPhone" title="Control from your phone"><i data-i="phone"></i></button>
+      <button class="ibtn" id="bSettings" title="Settings"><i data-i="settings"></i></button>
+    </div>
+    <div class="layer-menu glass" id="layerMenu"></div>
+  </div>
+</header>
+
+<!-- ============ SIDE PANEL ============ -->
+<aside class="panel glass" id="panel">
+  <div class="grab" id="grab"></div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="move" class="on"><i data-i="pin"></i><span>Move</span></button>
+    <button data-tab="route"><i data-i="route"></i><span>Route</span></button>
+    <button data-tab="places"><i data-i="star"></i><span>Places</span></button>
+    <button data-tab="schedule"><i data-i="calendar"></i><span>Schedule</span></button>
+    <button data-tab="history"><i data-i="history"></i><span>History</span></button>
+  </nav>
+
+  <!-- MOVE -->
+  <section class="tab on" id="tab-move">
+    <div class="card target-card" id="targetCard">
+      <div class="empty-hint" id="targetEmpty">
+        <div class="hint-ico"><i data-i="crosshair"></i></div>
+        <div><b>Pick a spot</b><p>Search above or click anywhere on the map. Right-click for quick actions.</p></div>
+      </div>
+      <div id="targetInfo" hidden>
+        <div class="t-name" id="tName">—</div>
+        <div class="t-sub" id="tSub">—</div>
+        <div class="t-meta" id="tMeta"></div>
+        <div class="btn-row">
+          <button class="btn pri grow" id="bTeleport"><i data-i="zap"></i>Teleport</button>
+          <button class="btn grow" id="bTravel" title="Move there at your current speed"><i data-i="navigation"></i>Travel</button>
+          <button class="btn icon" id="bSaveTarget" title="Save place"><i data-i="star"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><span>Current location</span><button class="link" id="bCenter"><i data-i="crosshair"></i>Center</button></div>
+      <div class="cur-loc" id="curLoc">Real GPS (not simulated)</div>
+      <div class="btn-row">
+        <button class="btn grow" id="bJoy"><i data-i="gamepad"></i>Joystick</button>
+        <button class="btn grow danger-soft" id="bReset"><i data-i="refresh"></i>Real GPS</button>
+      </div>
+      <p class="tiny muted">Joystick: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrow keys · <kbd>Space</kbd> pause · <kbd>Esc</kbd> stop</p>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><span>Go to coordinates</span></div>
+      <div class="input-row">
+        <input id="coords" placeholder="40.68925, -74.04450">
+        <button class="btn" id="bCoords">Go</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROUTE -->
+  <section class="tab" id="tab-route">
+    <div class="card">
+      <div class="card-h"><span>Build a route</span><button class="link" id="bRouteFromHere"><i data-i="pin"></i>Start here</button></div>
+      <p class="tiny muted" style="margin-top:0">Click the map to add stops. Drag stops to adjust.</p>
+      <ol class="stops" id="stops"></ol>
+      <div class="route-stats" id="routeStats"></div>
+      <label class="switch-row"><span>Follow roads &amp; paths</span><input type="checkbox" id="optRoads" class="switch"></label>
+      <div class="seg" id="loopSeg">
+        <button data-v="once">Once</button><button data-v="repeat">Repeat</button><button data-v="pingpong">Back &amp; forth</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn pri grow" id="bStart"><i data-i="play"></i>Start route</button>
+        <button class="btn icon" id="bSaveRoute" title="Save route"><i data-i="save"></i></button>
+        <button class="btn icon" id="bExportGpx" title="Export GPX"><i data-i="download"></i></button>
+        <button class="btn icon" id="bClearRoute" title="Clear"><i data-i="trash"></i></button>
+      </div>
+      <button class="btn ghost full" id="bImportGpx"><i data-i="upload"></i>Import GPX file</button>
+      <input type="file" id="gpxFile" accept=".gpx,application/gpx+xml" hidden>
+    </div>
+    <div class="list-h">Saved routes</div>
+    <div class="list" id="routeList"></div>
+  </section>
+
+  <!-- PLACES -->
+  <section class="tab" id="tab-places">
+    <div class="input-row"><input id="placeFilter" placeholder="Filter saved places…"></div>
+    <div class="list" id="placeList"></div>
+  </section>
+
+  <!-- SCHEDULE -->
+  <section class="tab" id="tab-schedule">
+    <p class="tiny muted" style="margin-top:0">Automatically move to a place or play a route at set times. Keep the app open and your iPhone connected.</p>
+    <button class="btn pri full" id="bNewSched"><i data-i="plus"></i>New schedule</button>
+    <div class="list" id="schedList"></div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="tab" id="tab-history">
+    <div class="list" id="histList"></div>
+    <button class="btn ghost full" id="bClearHist"><i data-i="trash"></i>Clear history</button>
+  </section>
+</aside>
+
+<!-- ============ HUD ============ -->
+<div class="hud">
+  <div class="chip warn glass" id="cooldownChip" hidden title="Suggested wait before moving far again (games that detect impossible travel)">
+    <i data-i="clock"></i><span id="cooldownTxt"></span>
+  </div>
+  <div class="chip accent glass" id="updateChip" hidden><i data-i="download"></i><span id="updateTxt"></span></div>
+</div>
+
+<!-- ============ MOTION DOCK ============ -->
+<div class="dock glass" id="dock">
+  <div class="presets" id="presets"></div>
+  <div class="dock-row">
+    <div class="transport">
+      <button class="round pri" id="bPlay" title="Start / pause (Space)"><i data-i="play"></i></button>
+      <button class="round" id="bStop" title="Stop (Esc)"><i data-i="stop"></i></button>
+    </div>
+    <div class="speedo">
+      <div class="speed-now"><span id="spNow">0</span><small id="spUnit">mph</small></div>
+      <div class="speed-label" id="spLabel">Walk</div>
+    </div>
+    <div class="slider-wrap">
+      <div class="slider-top">
+        <span class="muted tiny">Speed</span>
+        <span class="target"><button class="mini" id="spMinus">−</button><input id="spTarget" inputmode="decimal"><span class="unit" id="spTargetUnit">mph</span><button class="mini" id="spPlus">+</button></span>
+        <button class="link tiny" id="spReset" hidden>Reset</button>
+      </div>
+      <input type="range" id="spSlider" min="0" max="1000" step="1">
+    </div>
+    <div class="dock-toggles">
+      <button class="tog" id="tWobble" title="Natural GPS wobble"><i data-i="wave"></i><span>Wobble</span></button>
+      <button class="tog" id="tFollow" title="Keep map centered on you"><i data-i="navigation"></i><span>Follow</span></button>
+    </div>
+  </div>
+  <div class="progress" id="progress" hidden>
+    <div class="bar"><div id="progBar"></div></div>
+    <div class="prog-txt"><span id="progLeft"></span><span id="progRight"></span></div>
+  </div>
+</div>
+
+<!-- on-screen joystick -->
+<div class="joypad glass" id="joypad" hidden><div class="stick" id="stick"></div></div>
+
+<!-- context menu -->
+<div class="ctx glass" id="ctx" hidden></div>
+
+<!-- toasts -->
+<div class="toasts" id="toasts"></div>
+
+<!-- ============ MODALS ============ -->
+<div class="modal-bg" id="modalBg" hidden>
+  <div class="modal glass" id="modal">
+    <button class="ibtn close" id="modalClose"><i data-i="x"></i></button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script src="/static/vendor/maplibre/maplibre-gl.js"></script>
+<script src="/static/vendor/maplibre/leaflet-maplibre-gl.js"></script>
+<script src="/static/vendor/qrcode.js"></script>
+<script src="/static/icons.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

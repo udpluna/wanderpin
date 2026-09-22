@@ -1,0 +1,16 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+# Build output
+dist/
+build/work/
+*.spec.bak
+# Local-only folders
+_old/
+_update/
+# User data (lives in %APPDATA%\WanderPin, but just in case)
+wanderpin_data.json
+*.log
+.DS_Store
+Thumbs.db
