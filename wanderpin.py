@@ -31,6 +31,18 @@ logging.basicConfig(
 )
 log = logging.getLogger("wanderpin")
 
+# Record crashes (including native ones) so problems in the packaged app can be diagnosed.
+import faulthandler  # noqa: E402
+import traceback  # noqa: E402
+_crash_file = open(DATA_DIR / "crash.log", "a", encoding="utf-8")
+faulthandler.enable(file=_crash_file)
+
+
+def _excepthook(tp, val, tb):
+    log.error("Unhandled error:\n%s", "".join(traceback.format_exception(tp, val, tb)))
+sys.excepthook = _excepthook
+threading.excepthook = lambda a: _excepthook(a.exc_type, a.exc_value, a.exc_traceback)
+
 
 def port_in_use(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -38,6 +50,7 @@ def port_in_use(port: int) -> bool:
 
 
 def run_server(host: str, stop_evt: threading.Event):
+    log.info("Starting server…")
     import uvicorn
     from core.server import app
 
@@ -51,7 +64,16 @@ def run_server(host: str, stop_evt: threading.Event):
     server.run()
 
 
+def _show_error(msg: str):
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(0, msg, APP_NAME, 0x10)
+    except Exception:
+        print(msg)
+
+
 def main():
+    log.info("Launching %s %s (frozen=%s)", APP_NAME, VERSION, getattr(sys, "frozen", False))
     url = f"http://127.0.0.1:{PORT}"
     if port_in_use(PORT):
         # already running: just show it
@@ -67,10 +89,19 @@ def main():
     stop_evt = threading.Event()
     t = threading.Thread(target=run_server, args=(host, stop_evt), daemon=False)
     t.start()
-    for _ in range(100):
+    started = False
+    for _ in range(600):              # first launch can be slow while antivirus scans the app
         if port_in_use(PORT):
+            started = True
+            break
+        if not t.is_alive():
             break
         time.sleep(0.1)
+    if not started:
+        log.error("Background service failed to start - see the error above.")
+        _show_error(f"{APP_NAME} couldn't start its background service.\n\n"
+                    f"Please report this with the file:\n{DATA_DIR / 'app.log'}")
+        return
     log.info("%s %s running at %s (data: %s)", APP_NAME, VERSION, url, DATA_DIR)
 
     if not use_browser:

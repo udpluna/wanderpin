@@ -1,11 +1,12 @@
 # Builds the Windows app + installer and attaches them to a GitHub Release.
-# To publish a new version: bump "version" in product.json and build/installer.iss,
-# then on GitHub go to Releases > "Draft a new release", create a tag like v1.0.1 and publish.
+# To publish a new version: bump "version" in product.json and build/installer.iss, commit,
+# then create and push a tag like v1.0.1 (GitHub Desktop: History > right-click commit > Create Tag, then Push).
+# This workflow builds the app and creates the GitHub Release with the downloads attached.
 name: Build Windows release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -47,10 +48,19 @@ jobs:
             dist/WanderPin-Portable-Windows.zip
             dist/installer/*.exe
 
-      - name: Attach to release
-        if: github.event_name == 'release'
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          name: WanderPin ${{ github.ref_name }}
+          body: |
+            ## Download
+            - **WanderPin-Setup.exe**: installer (recommended)
+            - **WanderPin-Portable-Windows.zip**: no install, unzip and run `WanderPin.exe`
+
+            Windows may show "Windows protected your PC" because the app isn't code-signed yet. Click **More info → Run anyway**.
+
+            **Before connecting:** install *Apple Devices* from the Microsoft Store, plug in your iPhone (iOS 17.4+), tap *Trust*, and turn on *Developer Mode*. The app walks you through it.
           files: |
             dist/WanderPin-Portable-Windows.zip
             dist/installer/*.exe

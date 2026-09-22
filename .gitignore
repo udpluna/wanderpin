@@ -14,3 +14,4 @@ wanderpin_data.json
 *.log
 .DS_Store
 Thumbs.db
+dist_old_*/

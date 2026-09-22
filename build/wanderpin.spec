@@ -1,6 +1,6 @@
 # PyInstaller spec - builds dist\WanderPin\WanderPin.exe  (run build\build_windows.bat)
 import json, os
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, '..'))
 product = json.load(open(os.path.join(ROOT, 'product.json'), encoding='utf-8'))
@@ -16,13 +16,19 @@ datas = [
 binaries, hiddenimports = [], []
 for pkg in ['pymobiledevice3', 'developer_disk_image', 'pmd_pytcp', 'pmd_net_addr', 'pmd_net_proto',
             'pytun_pmd3', 'ipsw_parser', 'pykdebugparser', 'pycrashreport', 'construct', 'bpylist2',
-            'opack2', 'srptools', 'qh3', 'gpxpy', 'hyperframe', 'wsproto', 'uvicorn', 'webview',
+            'opack2', 'srptools', 'qh3', 'pyimg4', 'gpxpy', 'hyperframe', 'wsproto', 'uvicorn', 'webview',
             'sslpsk_pmd3', 'asn1', 'cryptography', 'ifaddr', 'packaging']:
     try:
         d, b, h = collect_all(pkg)
         datas += d; binaries += b; hiddenimports += h
     except Exception as e:
         print('skip', pkg, e)
+# Many of these packages read their own version at import time, so ship their metadata too.
+for pkg in ['pymobiledevice3', 'fastapi', 'uvicorn', 'pywebview']:
+    try:
+        datas += copy_metadata(pkg, recursive=True)
+    except Exception as e:
+        print('no metadata for', pkg, e)
 hiddenimports += ['core.server', 'uvicorn.logging', 'uvicorn.loops.auto', 'uvicorn.protocols.http.auto',
                   'uvicorn.lifespan.on']
 
