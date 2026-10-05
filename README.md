@@ -54,11 +54,13 @@
 4. On the iPhone, go to **Settings › Privacy & Security › Developer Mode**, turn it on, and restart the phone. The app's setup guide can make this option appear if you don't see it.
 5. Open WanderPin and click **Connect iPhone**. That's it! 🎉
 
-When you're done, press **Real GPS** or close the app, and your phone goes back to its real location.
+When you're done, press **Real GPS** to stop simulation and disconnect. Check your actual location and accuracy in a map app on the phone; WanderPin cannot read back real GPS or confirm its accuracy. Reconnect before starting another simulation. Closing the app also requests a reset when **Reset on exit** is enabled.
 
 ## 🛠️ Run from source
 
 Requires Python 3.12.
+
+Run the device reset and movement regression tests with `python -m unittest discover -s tests -v`. These use fake transports and do not require a connected iPhone or installed app dependencies.
 
 ```bash
 git clone https://github.com/udpluna/wanderpin.git

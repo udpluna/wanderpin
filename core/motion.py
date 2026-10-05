@@ -193,6 +193,7 @@ class Motion:
         self._last_drift = 0.0
         self._task: Optional[asyncio.Task] = None
         self.finished_note = None
+        self._generation = 0
         last = store.state.data.get("last")
         if last:
             self.base = tuple(last)
@@ -211,20 +212,38 @@ class Motion:
         self._task = asyncio.create_task(self._loop())
 
     # --- commands
+    async def _suspend_writer(self):
+        task = self._task
+        running = task is not None and not task.done()
+        if running:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._task = None
+        return running
+
     async def teleport(self, lat, lon):
-        prev = self.device.current or self.base
-        self.stop()
-        await self.device.set(lat, lon)
-        self.base = (lat, lon)
-        self._remember()
-        if prev:
-            km = haversine(prev, (lat, lon)) / 1000
-            mins = cooldown_minutes(km)
-            self.last_jump = {"t": time.time(), "km": round(km, 2), "minutes": mins} if mins else None
-        st = self.store.state.data["stats"]
-        st["teleports"] = st.get("teleports", 0) + 1
+        running = await self._suspend_writer()
+        try:
+            prev = self.device.current or self.base
+            self.stop()
+            await self.device.set(lat, lon)
+            self.base = (lat, lon)
+            self._remember()
+            if prev:
+                km = haversine(prev, (lat, lon)) / 1000
+                mins = cooldown_minutes(km)
+                self.last_jump = {"t": time.time(), "km": round(km, 2), "minutes": mins} if mins else None
+            st = self.store.state.data["stats"]
+            st["teleports"] = st.get("teleports", 0) + 1
+        finally:
+            if running:
+                self.start()
 
     def start_route(self, pts, loop_mode=None):
+        self._generation += 1
         self.path = Path(pts)
         self.pos_d = 0.0
         self.forward = True
@@ -240,10 +259,28 @@ class Motion:
         self.paused = on
 
     def stop(self):
+        self._generation += 1
         self.mode = "idle"
         self.path = None
         self.paused = False
         self.cur_speed = 0.0
+
+    async def reset(self):
+        """Drain the movement writer before clearing the device override."""
+        running = await self._suspend_writer()
+        self.stop()
+        self.base = None
+        self.joy = (0.0, 0.0)
+        self.joy_t = 0.0
+        self.wobble = [0.0, 0.0]
+        self.finished_note = None
+        self.store.state.data["last"] = None
+        self.store.state.save()
+        try:
+            await self.device.clear()
+        finally:
+            if running:
+                self.start()
 
     def joystick(self, x: float, y: float):
         mag = math.hypot(x, y)
@@ -252,6 +289,7 @@ class Motion:
         self.joy = (x, y)
         self.joy_t = time.time()
         if mag > 0.05 and self.mode != "joystick":
+            self._generation += 1
             if self.base is None and self.device.current:
                 self.base = self.device.current
             self.mode = "joystick"
@@ -333,6 +371,7 @@ class Motion:
                 await self.device.set(*p)
 
     async def _step_route(self):
+        generation = self._generation
         moved = self.cur_speed * TICK
         self.cur_speed = self.speed.tick(TICK, self.target_kmh / 3.6, self.preset, moved)
         d = self.cur_speed * TICK
@@ -351,6 +390,8 @@ class Motion:
         heading = (hn, he) if self.forward else (-hn, -he)
         self.base = p
         await self.device.set(*self._apply_wobble(p, heading, True))
+        if generation != self._generation:
+            return  # An old write completion cannot stop or mutate a new route.
         if end:
             mode = self.store.settings.get("loop_mode", "once")
             if mode == "pingpong":
