@@ -563,7 +563,7 @@ function joyVec() {
 }
 setInterval(() => {
   const [x, y] = joyVec(), active = Math.hypot(x, y) > 0.05;
-  if (!active && !joySent) return;
+  if (resettingGps || (!active && !joySent)) return;
   if (active && STATE.state !== 'connected') return;
   if (active && !STATE.current) { keys.clear(); padVec = [0, 0]; return toast('Teleport somewhere first, then walk with the joystick.', 'warn'); }
   joySent = active;
@@ -612,7 +612,11 @@ function render() {
   if (st === 'connected' && !S.onboarded && S.terms_accepted) { saveSetting({onboarded: true}); if ($('#modalBody .steps-dots')) { closeModal(); } }
   const cur = STATE.current;
   setMe(cur);
-  $('#curLoc').textContent = cur ? fmtLL(cur[0], cur[1]) : 'Real GPS (not simulated)';
+  $('#curLoc').textContent = STATE.gps_reset === 'failed' ? 'GPS reset failed — the phone may still use a simulated location'
+    : STATE.gps_reset === 'pending' ? 'Clearing simulated location…'
+    : cur ? fmtLL(cur[0], cur[1])
+    : STATE.gps_reset === 'sent' ? 'Simulation ended — check your location on the phone'
+    : 'No simulated coordinates (check real GPS on the phone)';
   if (cur && follow && (!lastPos || distM(lastPos, cur) > 0.5)) map.panTo(cur, {animate: true, duration: .6});
   lastPos = cur;
 
@@ -653,7 +657,28 @@ $('#bSettings').onclick = () => openSettings();
 $('#bPhone').onclick = () => openPhone();
 $('#statusPill').onclick = () => openConnect();
 $('#bCenter').onclick = () => { if (STATE.current) map.flyTo(STATE.current, Math.max(map.getZoom(), 16), {duration: .7}); else toast('No simulated location yet.', 'warn'); };
-$('#bReset').onclick = async () => { try { STATE = {...STATE, ...(await post('/api/reset'))}; render(); toast('Back to your real GPS'); } catch (e) { fail(e); } };
+let resettingGps = false;
+async function restoreGps() {
+  if (resettingGps) return false;
+  resettingGps = true;
+  const button = $('#bReset'), previous = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<span class="spin"></span>Restoring…';
+  keys.clear(); padVec = [0, 0]; joySent = false;
+  $('#stick').style.transform = '';
+  try {
+    STATE = await post('/api/reset');
+    render();
+    toast('Reset command sent and simulation session closed. Check your location in the phone map. Reconnect before simulating again.', 'ok', 9000);
+    return true;
+  } catch (e) {
+    STATE = await api('/api/state').catch(() => STATE);
+    render(); fail(e); return false;
+  } finally {
+    resettingGps = false; button.disabled = false; button.innerHTML = previous;
+  }
+}
+$('#bReset').onclick = restoreGps;
 $('#bTeleport').onclick = () => target && teleport(target.lat, target.lon, target.name);
 $('#bTravel').onclick = () => target && travel(target.lat, target.lon);
 $('#bSaveTarget').onclick = () => target && savePlaceDialog({lat: target.lat, lon: target.lon, name: target.name, detail: target.detail});
@@ -689,7 +714,7 @@ function openConnect() {
       <div class="btn-row"><button class="btn grow" id="cRe">${icon('refresh')}Reconnect</button><button class="btn grow danger-soft" id="cDis">Disconnect</button></div>`);
     $('#cAuto').onchange = e => saveSetting({auto_reconnect: e.target.checked});
     $('#cRe').onclick = () => { closeModal(); doConnect(); };
-    $('#cDis').onclick = async () => { await post('/api/disconnect'); closeModal(); toast('Disconnected — your iPhone is back on real GPS'); };
+    $('#cDis').onclick = async () => { if (await restoreGps()) closeModal(); };
     return;
   }
   wizard(S.terms_accepted ? 1 : 0);

@@ -27,6 +27,7 @@ store = Store()
 device = DemoDevice() if os.environ.get("WANDERPIN_DEMO") else Device()
 motion = Motion(device, store)
 _update_info: dict = {}
+_commands = asyncio.Lock()
 
 
 # ----------------------------------------------------------------- helpers --
@@ -68,24 +69,24 @@ async def scheduler_loop():
                 if key in fired:
                     continue
                 fired.add(key)
-                if not device.connected:
-                    continue
-                log.info("Schedule fired: %s", s.get("name"))
-                if s.get("preset"):
-                    store.update_settings({"preset": s["preset"], "custom_kmh": None})
-                if s["action"] == "teleport":
-                    await motion.teleport(s["lat"], s["lon"])
-                elif s["action"] == "route":
-                    r = store.get(store.routes, s.get("route_id"))
-                    if r:
-                        if device.current and haversine(device.current, r["path"][0]) > 50:
-                            await motion.teleport(*r["path"][0])
-                        motion.start_route(r["path"], s.get("loop_mode") or r.get("loop_mode"))
-                elif s["action"] == "reset":
-                    motion.stop()
-                    await device.clear()
-                s["last_run"] = int(time.time())
-                store.schedules.save()
+                async with _commands:
+                    if not device.connected:
+                        continue
+                    log.info("Schedule fired: %s", s.get("name"))
+                    if s.get("preset"):
+                        store.update_settings({"preset": s["preset"], "custom_kmh": None})
+                    if s["action"] == "teleport":
+                        await motion.teleport(s["lat"], s["lon"])
+                    elif s["action"] == "route":
+                        r = store.get(store.routes, s.get("route_id"))
+                        if r:
+                            if device.current and haversine(device.current, r["path"][0]) > 50:
+                                await motion.teleport(*r["path"][0])
+                            motion.start_route(r["path"], s.get("loop_mode") or r.get("loop_mode"))
+                    elif s["action"] == "reset":
+                        await motion.reset()
+                    s["last_run"] = int(time.time())
+                    store.schedules.save()
             except Exception as e:
                 log.warning("schedule failed: %s", e)
         if len(fired) > 1000:
@@ -97,12 +98,12 @@ async def lifespan(_app):
     global _update_info
     device.auto_reconnect = store.settings.get("auto_reconnect", True)
     motion.start()
-    asyncio.create_task(scheduler_loop())
+    background_tasks = [asyncio.create_task(scheduler_loop())]
 
     async def _upd():
         global _update_info
         _update_info = await services.check_update(VERSION)
-    asyncio.create_task(_upd())
+    background_tasks.append(asyncio.create_task(_upd()))
 
     if store.settings.get("auto_connect") and store.settings.get("terms_accepted"):
         async def _auto():
@@ -110,18 +111,41 @@ async def lifespan(_app):
                 await device.connect()
             except Exception:
                 device.want_connected = False
-        asyncio.create_task(_auto())
+        background_tasks.append(asyncio.create_task(_auto()))
     yield
+    for task in background_tasks:
+        task.cancel()
+    await asyncio.gather(*background_tasks, return_exceptions=True)
     try:
+        if motion._task:
+            motion._task.cancel()
+            await asyncio.gather(motion._task, return_exceptions=True)
         motion.stop()
         motion._remember()
         store.state.save()
         await device.disconnect(reset_location=store.settings.get("reset_on_exit", True))
     except Exception:
-        pass
+        log.exception("Failed to restore GPS during shutdown")
 
 
 app = FastAPI(lifespan=lifespan, title=APP_NAME)
+
+
+@app.middleware("http")
+async def serialize_commands(request: Request, call_next):
+    # Reject overlapping hardware commands instead of replaying stale UI requests.
+    # Planning routes and saving preferences do not need the hardware command lock.
+    device_commands = {"/api/connect", "/api/disconnect", "/api/reset", "/api/teleport",
+                       "/api/travel", "/api/route/start", "/api/joystick",
+                       "/api/route/pause", "/api/route/resume", "/api/route/stop",
+                       "/api/reveal-devmode"}
+    if request.method == "POST" and request.url.path in device_commands:
+        if _commands.locked():
+            log.info("Rejected overlapping device command: %s", request.url.path)
+            return JSONResponse({"detail": "Another device operation is in progress. Wait for it to finish and try again."}, status_code=409)
+        async with _commands:
+            return await call_next(request)
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -236,8 +260,10 @@ async def connect():
 
 @app.post("/api/disconnect")
 async def disconnect():
-    motion.stop()
-    await device.disconnect(reset_location=True)
+    try:
+        await motion.reset()
+    except Exception as e:
+        fail(e)
     return await state()
 
 
@@ -252,9 +278,8 @@ async def reveal_devmode():
 
 @app.post("/api/reset")
 async def reset():
-    motion.stop()
     try:
-        await device.clear()
+        await motion.reset()
     except Exception as e:
         fail(e)
     return await state()
